@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modo 2 — Processador de Coleções</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; padding: 2rem; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.25rem; }
+  .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+  .card { background: white; border-radius: 12px; border: 0.5px solid #e0e0d8; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
+  .step-num { background: #1a1a1a; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.4rem; font-weight: 500; }
+  input[type="text"], input[type="number"], input[type="password"] { width: 100%; padding: 0.6rem 0.8rem; border: 0.5px solid #ddd; border-radius: 8px; font-size: 0.9rem; background: #fafaf8; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: #888; }
+  input[type="file"] { display: none; }
+  .file-label { display: inline-flex; align-items: center; gap: 8px; padding: 0.6rem 1rem; border: 0.5px solid #ddd; border-radius: 8px; cursor: pointer; font-size: 0.9rem; background: #fafaf8; transition: background 0.2s; }
+  .file-label:hover { background: #f0f0eb; }
+  .file-info { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
+  .btn { padding: 0.7rem 1.5rem; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; }
+  .btn-primary { background: #1a1a1a; color: white; }
+  .btn-primary:hover { background: #333; }
+  .btn-primary:disabled { background: #999; cursor: not-allowed; }
+  .btn-secondary { background: white; border: 0.5px solid #ddd; color: #333; }
+  .btn-secondary:hover { background: #f5f5f0; }
+  .row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 140px; }
+  .progress-bar { height: 6px; background: #e8e8e4; border-radius: 3px; overflow: hidden; margin: 0.75rem 0; }
+  .progress-fill { height: 100%; background: #1a1a1a; border-radius: 3px; transition: width 0.3s; }
+  .log { background: #f8f8f5; border: 0.5px solid #e0e0d8; border-radius: 8px; padding: 1rem; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.82rem; line-height: 1.6; }
+  .log-ok { color: #2d7a3a; }
+  .log-err { color: #c0392b; }
+  .log-info { color: #555; }
+  .log-warn { color: #b7770d; }
+  .names-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.75rem; }
+  .name-chip { padding: 3px 10px; background: #f0f0eb; border-radius: 20px; font-size: 0.82rem; color: #333; }
+  #downloadBtn { display: none; margin-top: 1rem; }
+  .stat-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; }
+  .stat { background: #f5f5f0; border-radius: 8px; padding: 0.6rem 1rem; flex: 1; min-width: 100px; }
+  .stat-val { font-size: 1.4rem; font-weight: 600; }
+  .stat-lbl { font-size: 0.78rem; color: #666; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Processador de Coleções — Modo 2</h1>
+<p class="subtitle">Tradução, formatação e correções estruturais para produtos em língua estrangeira</p>
+
+<div class="card">
+  <h2><span class="step-num">1</span> Chave de API Anthropic</h2>
+  <label>Chave de API (sk-ant-...)</label>
+  <input type="password" id="apiKey" placeholder="sk-ant-api03-..." />
+</div>
+
+<div class="card">
+  <h2><span class="step-num">2</span> Ficheiro CSV</h2>
+  <label class="file-label" for="csvFile">📂 Escolher ficheiro CSV</label>
+  <input type="file" id="csvFile" accept=".csv" onchange="handleFile(this)" />
+  <div class="file-info" id="fileInfo">Nenhum ficheiro selecionado</div>
+  <div id="statsArea" class="hidden">
+    <div class="stat-row" id="statsRow"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="step-num">3</span> Nomes Femininos</h2>
+  <div class="row">
+    <div class="col">
+      <label>Quantos nomes para esta coleção?</label>
+      <input type="number" id="numNames" min="1" max="65" value="20" onchange="updateNames()" />
+    </div>
+    <div class="col">
+      <label>Taxa EUR → HUF</label>
+      <input type="number" id="eurRate" value="357" />
+    </div>
+  </div>
+  <div class="names-preview" id="namesPreview"></div>
+</div>
+
+<div class="card">
+  <h2><span class="step-num">4</span> Processar</h2>
+  <button class="btn btn-primary" id="processBtn" onclick="startProcessing()" disabled>Iniciar processamento</button>
+  <div id="progressArea" class="hidden" style="margin-top:1rem;">
+    <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#555; margin-bottom:4px;">
+      <span id="progressLabel">A processar...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="log" id="logArea"></div>
+  </div>
+  <button class="btn btn-secondary" id="downloadBtn" onclick="downloadCSV()">⬇ Descarregar CSV corrigido</button>
+</div>
+
+<script>
+const NAMES_LIST = [
+  'Mária','Erzsébet','Katalin','Éva','Ilona','Anna','Zsuzsanna','Margit',
+  'Andrea','Judit','Ágnes','Ildikó','Erika','Krisztina','Julianna','Eszter',
+  'Mónika','Irén','Edit','Gabriella','Szilvia','Magdolna','Viktória','Anita',
+  'Anikó','Márta','Tímea','Dóra','Zsófia','Piroska','Ibolya','Tünde','Rozália',
+  'Klára','Alexandra','Veronika','Csilla','Nóra','Réka','Nikolett','Melinda',
+  'Gizella','Adrienn','Vivien','Beáta','Marianna','Renáta','Barbara','Enikő',
+  'Terézia','Bernadett','Rita','Petra','Brigitta','Boglárka','Edina','Hajnalka',
+  'Gyöngyi','Noémi','Orsolya','Lilla','Lívia','Virág','Fanni','Kinga'
+];
+
+const SIZE_WORDS = new Set(['xs','s','m','l','xl','xxl','xxxl','one size','único','egyméret']);
+let csvData = null;
+let processedCSV = null;
+
+// ── Robust RFC-4180 CSV parser ──────────────────────────────────────────────
+function parseCSV(text) {
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  let pos = 0;
+  const headers = [];
+  const rows = [];
+
+  function readField() {
+    if (text[pos] === '"') {
+      pos++;
+      let val = '';
+      while (pos < text.length) {
+        if (text[pos] === '"') {
+          if (text[pos+1] === '"') { val += '"'; pos += 2; }
+          else { pos++; break; }
+        } else {
+          val += text[pos++];
+        }
+      }
+      return val;
+    }
+    let val = '';
+    while (pos < text.length && text[pos] !== ',' && text[pos] !== '\n') {
+      val += text[pos++];
+    }
+    return val;
+  }
+
+  // headers
+  while (pos < text.length && text[pos] !== '\n') {
+    headers.push(readField());
+    if (text[pos] === ',') pos++;
+  }
+  if (text[pos] === '\n') pos++;
+
+  // rows
+  while (pos < text.length) {
+    if (text[pos] === '\n') { pos++; continue; }
+    const row = {};
+    for (let i = 0; i < headers.length; i++) {
+      row[headers[i]] = readField();
+      if (text[pos] === ',') pos++;
+    }
+    // consume remainder of physical line
+    while (pos < text.length && text[pos] !== '\n') pos++;
+    if (text[pos] === '\n') pos++;
+    if (Object.values(row).some(v => v !== '')) rows.push(row);
+  }
+  return { headers, rows };
+}
+
+// ── Robust RFC-4180 CSV serialiser ─────────────────────────────────────────
+function toCSV(headers, rows) {
+  function esc(val) {
+    const s = String(val == null ? '' : val);
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+  const lines = [headers.map(esc).join(',')];
+  for (const row of rows) lines.push(headers.map(h => esc(row[h])).join(','));
+  return lines.join('\r\n');
+}
+
+function roundTo90(val) {
+  const n = parseFloat(val);
+  if (isNaN(n) || n <= 0) return val;
+  const base = Math.floor(n / 100) * 100;
+  let c = base + 90;
+  if (c < n) c += 100;
+  return c;
+}
+
+function updateNames() {
+  const n = Math.min(Math.max(parseInt(document.getElementById('numNames').value)||1, 1), 65);
+  document.getElementById('namesPreview').innerHTML = NAMES_LIST.slice(0, n)
+    .map((name, i) => `<span class="name-chip">${i+1}. ${name}</span>`).join('');
+}
+
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('fileInfo').textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  const reader = new FileReader();
+  reader.onload = e => {
+    csvData = parseCSV(e.target.result);
+    const handles = [...new Set(csvData.rows.map(r => r['Handle']).filter(Boolean))];
+    const prices = {};
+    handles.forEach(h => {
+      const p = csvData.rows.find(r => r['Handle'] === h);
+      const key = `${p['Variant Price']}|${p['Variant Compare At Price']}`;
+      prices[key] = (prices[key]||0) + 1;
+    });
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat"><div class="stat-val">${handles.length}</div><div class="stat-lbl">Produtos</div></div>
+      <div class="stat"><div class="stat-val">${Object.keys(prices).length}</div><div class="stat-lbl">Ranges de preço</div></div>`;
+    document.getElementById('statsArea').classList.remove('hidden');
+    document.getElementById('processBtn').disabled = false;
+    updateNames();
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function distributeNames(n, count) {
+  const list = NAMES_LIST.slice(0, n);
+  const assigned = [];
+  let idx = 0;
+  for (let i = 0; i < count; i++) {
+    let candidate = list[idx % list.length];
+    if (assigned.length > 0 && candidate === assigned[assigned.length-1]) {
+      idx++;
+      candidate = list[idx % list.length];
+    }
+    assigned.push(candidate);
+    idx++;
+  }
+  return assigned;
+}
+
+function addLog(msg, type='info') {
+  const log = document.getElementById('logArea');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setProgress(done, total) {
+  const pct = Math.round((done/total)*100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressLabel').textContent = `A processar produto ${done} de ${total}...`;
+}
+
+async function callClaude(apiKey, prompt) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || 'Erro na API');
+  return data.content[0].text.trim();
+}
+
+async function startProcessing() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey.startsWith('sk-ant-')) { alert('Chave de API inválida.'); return; }
+  if (!csvData) { alert('Carrega um CSV primeiro.'); return; }
+
+  const numNames = Math.min(Math.max(parseInt(document.getElementById('numNames').value)||1, 1), 65);
+  const eurRate = parseFloat(document.getElementById('eurRate').value) || 357;
+
+  document.getElementById('progressArea').classList.remove('hidden');
+  document.getElementById('processBtn').disabled = true;
+  document.getElementById('logArea').innerHTML = '';
+
+  const handles = [...new Set(csvData.rows.map(r => r['Handle']).filter(Boolean))];
+  const assignedNames = distributeNames(numNames, handles.length);
+
+  const handleToName = {};
+  const handleToOldName = {};
+  handles.forEach((h, i) => {
+    handleToName[h] = assignedNames[i];
+    const title = csvData.rows.find(r => r['Handle'] === h)?.['Title'] || '';
+    const sep = title.includes(' - ') ? ' - ' : title.includes(' – ') ? ' – ' : null;
+    handleToOldName[h] = sep ? title.split(sep)[0].trim() : null;
+  });
+
+  const newRows = JSON.parse(JSON.stringify(csvData.rows));
+  let done = 0;
+  const errors = [];
+
+  for (let hi = 0; hi < handles.length; hi++) {
+    const handle = handles[hi];
+    const newName = handleToName[handle];
+    const rowIdxs = newRows.map((r,i) => r['Handle']===handle ? i : -1).filter(i=>i>=0);
+    const mainRow = newRows[rowIdxs[0]];
+    const origTitle = mainRow['Title'] || '';
+    const origDesc = mainRow['Body (HTML)'] || '';
+
+    setProgress(hi, handles.length);
+    addLog(`[${hi+1}/${handles.length}] ${origTitle}`, 'info');
+
+    // ── TITLE ────────────────────────────────────────────────────────────
+    let newTitle = origTitle;
+    try {
+      const titlePrompt = `The product title may follow one of these formats:
+- "[Female name] | [Short description]"
+- "[Female name] - [Short description]"
+- "[Short description only]" (no female name)
+
+Your task:
+- If the title contains a female name followed by "|" or "-", ignore the name and extract only the short description after the separator.
+- If the title has no female name (no separator), use the full title as-is.
+- Translate the extracted description into Hungarian.
+- Use this exact female name: ${newName}
+- Output the result in this exact format: ${newName} - [Translated description]
+- Output only this single line. No quotes, no explanation, nothing else.
+
+Original product title:
+${origTitle}`;
+      newTitle = await callClaude(apiKey, titlePrompt);
+      newTitle = newTitle.replace(/^["']|["']$/g, '').trim();
+      if (!newTitle.startsWith(newName)) newTitle = `${newName} - ${newTitle}`;
+      addLog(`  ✓ Título: ${newTitle}`, 'ok');
+    } catch(e) {
+      addLog(`  ✗ Erro no título: ${e.message}`, 'err');
+      errors.push(`${origTitle} — erro no título`);
+      newTitle = handleToOldName[handle]
+        ? origTitle.replace(handleToOldName[handle], newName)
+        : `${newName} - ${origTitle}`;
+    }
+
+    // ── DESCRIPTION ──────────────────────────────────────────────────────
+    let newDesc = origDesc;
+    if (origDesc && origDesc.trim()) {
+      try {
+        const descPrompt = `Translate the product description into Hungarian.
+Output valid HTML only. Start directly with <h4>. No markdown, no code fences, no explanation before or after.
+
+Structure:
+<h4>[Short product headline]</h4>
+<p>[Translated introductory paragraph]</p>
+<ul>
+<li><strong>[Feature title]</strong> – [Explanation]</li>
+</ul>
+(minimum 5 list items)
+
+Rules:
+- Output HTML only. Start with <h4>.
+- First sentence → short headline in <h4>.
+- Intro paragraph → <p>.
+- Bullet points → <ul><li>. Each bullet has two parts separated by ":". Part before ":" = feature title → translate and wrap in <strong>. After <strong> use " – " then translated explanation. Do NOT use ":" after the title.
+- No "•" symbols. No markdown.
+- Preserve meaning and order. Do not add or remove information.
+- CRITICAL: Replace any shop name, brand name, or store reference with "Anna Debrecen".
+- Remove any sentence that solely promotes another shop.
+- Remove references to external websites or social media.
+
+Product description:
+${origDesc}`;
+        newDesc = await callClaude(apiKey, descPrompt);
+        newDesc = newDesc.replace(/^```html\s*/i,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
+        addLog(`  ✓ Descrição traduzida`, 'ok');
+      } catch(e) {
+        addLog(`  ✗ Erro na descrição: ${e.message}`, 'err');
+        errors.push(`${origTitle} — erro na descrição`);
+      }
+    }
+
+    // ── APPLY TO ALL ROWS OF THIS HANDLE ────────────────────────────────
+    for (const idx of rowIdxs) {
+      const row = newRows[idx];
+      const price = parseFloat(row['Variant Price']);
+      const compare = parseFloat(row['Variant Compare At Price']);
+      if (!isNaN(price) && price > 0) row['Variant Price'] = roundTo90(price * eurRate);
+      if (!isNaN(compare) && compare > 0) row['Variant Compare At Price'] = roundTo90(compare * eurRate);
+      if (row['Title'] && row['Title'].trim()) row['Title'] = newTitle;
+      if (row['Body (HTML)'] && row['Body (HTML)'].trim()) row['Body (HTML)'] = newDesc;
+    }
+
+    done++;
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  setProgress(handles.length, handles.length);
+  document.getElementById('progressLabel').textContent = `Concluído! ${done} produtos processados.`;
+
+  if (errors.length > 0) {
+    addLog(`\n⚠ ${errors.length} erro(s):`, 'warn');
+    errors.forEach(e => addLog(`  • ${e}`, 'warn'));
+  } else {
+    addLog(`\n✓ Todos os produtos processados sem erros!`, 'ok');
+  }
+
+  processedCSV = toCSV(csvData.headers, newRows);
+  document.getElementById('downloadBtn').style.display = 'inline-block';
+  document.getElementById('processBtn').disabled = false;
+}
+
+function downloadCSV() {
+  if (!processedCSV) return;
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + processedCSV], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'colecao_modo2_corrigida.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+updateNames();
+</script>
+</body>
+</html>
